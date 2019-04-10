@@ -29,7 +29,7 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 if(NOT $ENV{ROOTSYS} STREQUAL "")
   string(REPLACE "$ENV{ROOTSYS}/bin" "" ENV_PATH "$ENV{PATH}")
   string(REPLACE "$ENV{ROOTSYS}/lib" "" ENV_LD_LIBRARY_PATH "$ENV{LD_LIBRARY_PATH}")
-  string(REPLACE "$ENV{ROOTSYS}/lib" "" ENV_PYTHONPATH $ENV{PYTHONPATH})
+  string(REPLACE "$ENV{ROOTSYS}/lib" "" ENV_PYTHONPATH "$ENV{PYTHONPATH}")
   string(REPLACE "$ENV{ROOTSYS}" "" ENV_CMAKE_PREFIX_PATH "$ENV{CMAKE_PREFIX_PATH}")
   set(ENV{PATH} "${ENV_PATH}")
   set(ENV{LD_LIBRARY_PATH} "${ENV_LD_LIBRARY_PATH}")
@@ -192,10 +192,17 @@ add_custom_command(OUTPUT ${stamp_file}
                    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_SOURCE_DIR}/LICENSE ${CMAKE_BINARY_DIR}/LICENSE
                    COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/README ${CMAKE_BINARY_DIR}/README
                    COMMAND ${CMAKE_COMMAND} -E touch ${stamp_file}
-                   COMMENT "Copying directories such as etc, icons, fonts, etc. to build area")
+                   COMMENT "Copying directories such as etc, icons, fonts, js, ui5, etc. to build area")
+
+if(http)
+set(jsroot_files js/*)
+endif()
+if(webui)
+set(openui5_files ui5/*)
+endif()
 
 #---Copy files to the build area, with dependency---------------------------------
-file(GLOB_RECURSE artifact_files RELATIVE ${CMAKE_SOURCE_DIR} tutorials/* etc/* test/* icons/* fonts/* macros/*)
+file(GLOB_RECURSE artifact_files RELATIVE ${CMAKE_SOURCE_DIR} tutorials/* etc/* test/* icons/* fonts/* macros/* ${jsroot_files} ${openui5_files})
 set(artifact_files_builddir)
 foreach(artifact_file ${artifact_files})
   # Filter out hsimple.root; someone might have created it in the src dir, and the hsimple.root
@@ -247,36 +254,7 @@ if(cxxmodules)
     # for glew.h to it its trick.
     set(ROOT_CXXMODULES_COMMONFLAGS "${ROOT_CXXMODULES_COMMONFLAGS} -isystem ${CMAKE_SOURCE_DIR}/graf3d/glew/isystem")
   endif()
-endif(cxxmodules)
 
-if(MSVC)
-  set(_os_cat "type")
-else()
-  set(_os_cat "cat")
-endif()
-file(TO_NATIVE_PATH "${CMAKE_BINARY_DIR}/include/module.modulemap.extra" _from_native)
-file(TO_NATIVE_PATH "${CMAKE_BINARY_DIR}/include/module.modulemap" _to_native)
-
-add_custom_target(copymodulemap DEPENDS "${CMAKE_BINARY_DIR}/include/module.modulemap")
-add_custom_command(
-                  OUTPUT "${CMAKE_BINARY_DIR}/include/module.modulemap"
-                  DEPENDS build/unix/module.modulemap "${CMAKE_BINARY_DIR}/include/module.modulemap.extra"
-                  COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/build/unix/module.modulemap" "${CMAKE_BINARY_DIR}/include/module.modulemap"
-                  COMMAND ${_os_cat} "${_from_native}" >> "${_to_native}"
-)
-install(FILES "${CMAKE_BINARY_DIR}/include/module.modulemap" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
-
-add_dependencies(move_artifacts copymodulemap)
-
-# Provide our own modulemap for implementations other than libcxx.
-if (NOT WIN32 AND NOT libcxx)
-  configure_file(${CMAKE_SOURCE_DIR}/build/unix/stl.modulemap ${CMAKE_BINARY_DIR}/include/stl.modulemap)
-  install(FILES "${CMAKE_BINARY_DIR}/include/stl.modulemap" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
-  configure_file(${CMAKE_SOURCE_DIR}/build/unix/libc.modulemap ${CMAKE_BINARY_DIR}/include/libc.modulemap)
-  install(FILES "${CMAKE_BINARY_DIR}/include/libc.modulemap" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
-endif()
-
-if (cxxmodules)
   # These vars are useful when we want to compile things without cxxmodules.
   set(ROOT_CXXMODULES_CXXFLAGS "${ROOT_CXXMODULES_COMMONFLAGS} -fcxx-modules -Xclang -fmodules-local-submodule-visibility -Wno-module-import-in-extern-c" CACHE STRING "Useful to filter out the modules-related cxxflags.")
   set(ROOT_CXXMODULES_CFLAGS "${ROOT_CXXMODULES_COMMONFLAGS}" CACHE STRING "Useful to filter out the modules-related cflags.")
@@ -315,7 +293,38 @@ endif()
 ROOT_ADD_TEST_SUBDIRECTORY(test)
 ROOT_ADD_TEST_SUBDIRECTORY(tutorials)
 
+get_property(__allHeaders GLOBAL PROPERTY ROOT_HEADER_TARGETS)
+get_property(__allBuiltins GLOBAL PROPERTY ROOT_BUILTIN_TARGETS)
+add_custom_target(move_headers ALL DEPENDS ${__allHeaders} ${__allBuiltins})
+
 #---CXX MODULES-----------------------------------------------------------------------------------
+if(MSVC)
+  set(_os_cat "type")
+else()
+  set(_os_cat "cat")
+endif()
+file(TO_NATIVE_PATH "${CMAKE_BINARY_DIR}/include/module.modulemap.extra" _from_native)
+file(TO_NATIVE_PATH "${CMAKE_BINARY_DIR}/include/module.modulemap" _to_native)
+
+add_custom_target(copymodulemap DEPENDS "${CMAKE_BINARY_DIR}/include/module.modulemap")
+add_custom_command(
+                  OUTPUT "${CMAKE_BINARY_DIR}/include/module.modulemap"
+                  DEPENDS build/unix/module.modulemap "${CMAKE_BINARY_DIR}/include/module.modulemap.extra"
+                  COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/build/unix/module.modulemap" "${CMAKE_BINARY_DIR}/include/module.modulemap"
+                  COMMAND ${_os_cat} "${_from_native}" >> "${_to_native}"
+)
+install(FILES "${CMAKE_BINARY_DIR}/include/module.modulemap" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
+
+add_dependencies(move_headers copymodulemap)
+
+# Provide our own modulemap for implementations other than libcxx.
+if (NOT WIN32 AND NOT libcxx)
+  configure_file(${CMAKE_SOURCE_DIR}/build/unix/stl.modulemap ${CMAKE_BINARY_DIR}/include/stl.modulemap)
+  install(FILES "${CMAKE_BINARY_DIR}/include/stl.modulemap" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
+  configure_file(${CMAKE_SOURCE_DIR}/build/unix/libc.modulemap ${CMAKE_BINARY_DIR}/include/libc.modulemap)
+  install(FILES "${CMAKE_BINARY_DIR}/include/libc.modulemap" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR} COMPONENT headers)
+endif()
+
 # Take all the modulemap contents we collected from the packages and append them to our modulemap.
 # We have to delay this because the ROOT_CXXMODULES_EXTRA_MODULEMAP_CONTENT is filled in the
 # add_subdirectory calls above.
@@ -325,10 +334,6 @@ file(WRITE "${CMAKE_BINARY_DIR}/include/module.modulemap.extra" "${__modulemap_e
 
 # From now on we handled all exposed module and want to make all new modulemaps private to ROOT.
 set(ROOT_CXXMODULES_WRITE_TO_CURRENT_DIR ON)
-
-get_property(__allHeaders GLOBAL PROPERTY ROOT_HEADER_TARGETS)
-get_property(__allBuiltins GLOBAL PROPERTY ROOT_BUILTIN_TARGETS)
-add_custom_target(move_headers ALL DEPENDS ${__allHeaders} ${__allBuiltins})
 
 #---Global PCH-----------------------------------------------------------------------------------
 get_property(__allTargets GLOBAL PROPERTY ROOT_DICTIONARY_TARGETS)
@@ -357,7 +362,7 @@ endif()
 add_custom_command(OUTPUT etc/dictpch/allLinkDefs.h
                           etc/dictpch/allHeaders.h
                           etc/dictpch/allCppflags.txt
-                   COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/build/unix/makepchinput.py ${CMAKE_SOURCE_DIR} . ${__clingetcpch} -- ${CMAKE_CXX_FLAGS_SEPARATE}
+                   COMMAND ${PYTHON_EXECUTABLE} ${CMAKE_SOURCE_DIR}/build/unix/makepchinput.py ${CMAKE_SOURCE_DIR} . ${pyroot_experimental} ${__clingetcpch} -- ${CMAKE_CXX_FLAGS_SEPARATE}
                    DEPENDS ${CMAKE_SOURCE_DIR}/build/unix/makepchinput.py ${__allFiles})
 
 get_property(incdirs DIRECTORY PROPERTY INCLUDE_DIRECTORIES)
@@ -460,8 +465,13 @@ if(NOT CMAKE_SOURCE_DIR STREQUAL CMAKE_INSTALL_PREFIX)
   install(DIRECTORY fonts/  DESTINATION ${CMAKE_INSTALL_FONTDIR})
   install(DIRECTORY icons/  DESTINATION ${CMAKE_INSTALL_ICONDIR})
   install(DIRECTORY macros/ DESTINATION ${CMAKE_INSTALL_MACRODIR})
+  if(http)
+     install(DIRECTORY js/     DESTINATION ${CMAKE_INSTALL_JSROOTDIR})
+  endif()
+  if(webui)
+     install(DIRECTORY ui5/    DESTINATION ${CMAKE_INSTALL_OPENUI5DIR})
+  endif()
   install(DIRECTORY man/    DESTINATION ${CMAKE_INSTALL_MANDIR})
-  install(DIRECTORY test/      DESTINATION ${CMAKE_INSTALL_TESTDIR} COMPONENT tests)
   install(DIRECTORY tutorials/ DESTINATION ${CMAKE_INSTALL_TUTDIR} COMPONENT tests)
   install(DIRECTORY cmake/modules DESTINATION ${CMAKE_INSTALL_CMAKEDIR} PATTERN "Find*.cmake" EXCLUDE)
 endif()

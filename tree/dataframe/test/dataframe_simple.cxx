@@ -11,6 +11,7 @@
 #include <TTree.h>
 
 #include <algorithm> // std::sort
+#include <array>
 #include <chrono>
 #include <thread>
 #include <set>
@@ -181,10 +182,22 @@ TEST_P(RDFSimpleTests, Define_jitted_type_unknown_to_interpreter)
 {
    RDataFrame tdf(10);
    auto d = tdf.Define("foo", [](){return RFoo();});
+   auto d2 = tdf.Define("foo2", [](){return std::array<RFoo, 2>();});
 
    // We check that the if nothing is done with RFoo in jitted strings
    // everything works fine
    EXPECT_EQ(10U, *d.Count());
+
+   // We try to use the column: an exception is thrown
+   int ret = 1;
+   try {
+      // Here the system tries to understand the type of foo3 and will fail
+      auto d3 = d.Define("foo3", "foo*2");
+   } catch (const std::runtime_error &) {
+      ret = 0;
+   }
+   EXPECT_EQ(0, ret);
+
 }
 
 TEST_P(RDFSimpleTests, Define_jitted_complex)
@@ -917,8 +930,7 @@ TEST_P(RDFSimpleTests, DifferentTreesInDifferentThreads)
    }
 
    TFile f(filename);
-   TTree *t;
-   f.GetObject(treename, t);
+   auto t = f.Get<TTree>(treename);
    RDataFrame df(*t);
    *df.Define("xy", [](int x, int y) { return x * y; }, {"x", "y"})
        .Filter([](int xy) { return xy > 0; }, {"xy"})
@@ -927,6 +939,33 @@ TEST_P(RDFSimpleTests, DifferentTreesInDifferentThreads)
    gSystem->Unlink(filename);
 }
 
+TEST_P(RDFSimpleTests, HistosOneWeightPerEvent)
+{
+   using floats = std::vector<float>;
+   auto df = RDataFrame(1);
+   auto d = df.Define("v0", [](){floats v({1,2,3});return v;})
+              .Define("v1", [](){floats v({4,5,6});return v;})
+              .Define("v2", [](){floats v({7,8,9});return v;})
+              .Define("w",[](){return 3;});
+   
+   auto h1 = d.Histo1D<floats, int>("v0","w");
+   EXPECT_DOUBLE_EQ(h1->GetMean(), 2.);
+   auto h2 = d.Histo2D<floats, floats, int>({"","",16,0,16,16,0,16}, "v0", "v1", "w");
+   EXPECT_DOUBLE_EQ(h2->GetMean(), 2.);
+   auto h3 = d.Histo3D<floats, floats, floats, int>({"","",16,0,16,16,0,16,16,0,16},"v0", "v1", "v2", "w");
+   EXPECT_DOUBLE_EQ(h3->GetMean(), 2.);
+}
+
+TEST_P(RDFSimpleTests, ManyRangesPerWorker)
+{
+   auto filename = "ManyRangesPerWorker_file.root";
+   {
+      ROOT::RDataFrame(184).Define("i",[](){return 0;})
+        .Snapshot<int>("t",filename,{"i"},{"RECREATE", ROOT::kZLIB, 1, 1, 99, false});
+   }
+   ROOT::RDataFrame("t",filename).Mean<int>("i");
+   gSystem->Unlink(filename);
+}
 // run single-thread tests
 INSTANTIATE_TEST_CASE_P(Seq, RDFSimpleTests, ::testing::Values(false));
 

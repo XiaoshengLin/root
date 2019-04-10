@@ -440,16 +440,6 @@ if(python)
   message(STATUS "Looking for python")
   find_package(PythonInterp ${python_version} REQUIRED)
   find_package(PythonLibs ${python_version} REQUIRED)
-  if (tmva AND tmva-pymva)
-    message(STATUS "Looking for numpy (python package)")
-    find_package(NumPy)
-    if(fail-on-missing AND NOT NUMPY_FOUND)
-      message(FATAL_ERROR "TMVA: numpy python package not found and tmva-pymva component required (python executable: ${PYTHON_EXECUTABLE})")
-    elseif(NOT NUMPY_FOUND)
-      message(STATUS "TMVA: numpy not found for python ${PYTHON_EXECUTABLE}. Switching off tmva-pymva option")
-      set(tmva-pymva OFF CACHE BOOL "Disabled because numpy not found (${tmva-pymva_description})" FORCE)
-    endif()
-  endif()
 
   if(NOT "${PYTHONLIBS_VERSION_STRING}" MATCHES "${PYTHON_VERSION_STRING}")
     message(FATAL_ERROR "Version mismatch between Python interpreter (${PYTHON_VERSION_STRING})"
@@ -1348,10 +1338,9 @@ if (vecgeom)
   endif()
 endif()
 
-#---Check for CUDA and BLAS ---------------------------------------------------------
-if(tmva AND cuda AND tmva-gpu)
-  message(STATUS "Looking for CUDA for optional parts of TMVA")
+#---Check for CUDA-----------------------------------------------------------------------
 
+if(cuda OR tmva-gpu)
   if(CMAKE_CXX_STANDARD EQUAL 11)
     find_package(CUDA 7.5)
   elseif(CMAKE_CXX_STANDARD EQUAL 14)
@@ -1360,35 +1349,51 @@ if(tmva AND cuda AND tmva-gpu)
   else()
     message(FATAL_ERROR "CUDA not supported with C++${CMAKE_CXX_STANDARD}")
   endif()
+  enable_language(CUDA)
+endif()
 
-  if(NOT CUDA_FOUND)
-    if(fail-on-missing)
-      message(FATAL_ERROR "CUDA not found. Ensure that the installation of CUDA is in the CMAKE_PREFIX_PATH")
-    else()
-      message(STATUS "CUDA not found. Ensure that the installation of CUDA is in the CMAKE_PREFIX_PATH")
-      message(STATUS "                For the time being switching OFF 'cuda' option")
-      set(cuda OFF CACHE BOOL "Disabled because cuda not found (${cuda_description})" FORCE)
-      set(tmva-gpu OFF CACHE BOOL "Disabled because cuda not found" FORCE)
+#---TMVA and its dependencies------------------------------------------------------------
+if(tmva)
+  if(tmva-cpu AND imt)
+    message(STATUS "Looking for BLAS for optional parts of TMVA")
+    find_package(BLAS)
+
+    if(NOT BLAS_FOUND)
+      if (GSL_FOUND)
+        message(STATUS "Using GSL CBLAS for optional parts of TMVA")
+      else()
+        set(tmva-cpu OFF CACHE BOOL "Disabled because BLAS was not found (${tmva-cpu_description})" FORCE)
+      endif()
+    endif()
+  else()
+    set(tmva-cpu OFF CACHE BOOL "Disabled because 'imt' is disabled (${tmva-cpu_description})" FORCE)
+  endif()
+
+  if(tmva-gpu AND NOT CUDA_FOUND)
+    set(tmva-gpu OFF CACHE BOOL "Disabled because cuda not found" FORCE)
+  endif()
+
+  if(python AND tmva-pymva)
+    message(STATUS "Looking for Numpy")
+    find_package(NumPy)
+    if(fail-on-missing AND NOT NUMPY_FOUND)
+      message(FATAL_ERROR "TMVA: numpy python package not found and tmva-pymva component required"
+                          " (python executable: ${PYTHON_EXECUTABLE})")
+    elseif(NOT NUMPY_FOUND)
+      message(STATUS "TMVA: Numpy not found for python ${PYTHON_EXECUTABLE}. Switching off tmva-pymva option")
+      set(tmva-pymva OFF CACHE BOOL "Disabled because Numpy was not found (${tmva-pymva_description})" FORCE)
     endif()
   endif()
-endif()
 
-if(tmva AND tmva-cpu AND imt )
-  message(STATUS "Looking for BLAS for optional parts of TMVA")
-  find_package(BLAS)
-endif()
-
-if(NOT BLAS_FOUND)
-  if (tmva AND tmva-cpu AND mathmore AND imt)
-    message(STATUS "Using GSL CBLAS for optional parts of TMVA")
-  else()
-    set(tmva-cpu OFF CACHE BOOL "Disabled because blas not found and mathmore, imt, or tmva disabled (${tmva-cpu_description})" FORCE)
+  if(tmva-rmva AND NOT R_FOUND)
+    set(tmva-rmva  OFF CACHE BOOL "Disabled because R was not found (${tmva-rmva_description})"  FORCE)
   endif()
+else()
+  set(tmva-cpu   OFF CACHE BOOL "Disabled because 'tmva' is disabled (${tmva-cpu_description})"   FORCE)
+  set(tmva-gpu   OFF CACHE BOOL "Disabled because 'tmva' is disabled (${tmva-gpu_description})"   FORCE)
+  set(tmva-pymva OFF CACHE BOOL "Disabled because 'tmva' is disabled (${tmva-pymva_description})" FORCE)
+  set(tmva-rmva  OFF CACHE BOOL "Disabled because 'tmva' is disabled (${tmva-rmva_description})"  FORCE)
 endif()
-if(NOT CUDA_FOUND)
-  set(tmva-gpu OFF CACHE BOOL "Disabled because cuda not found (${tmva-gpu_description})" FORCE)
-endif()
-
 
 #---Download googletest--------------------------------------------------------------
 if (testing)
@@ -1464,13 +1469,14 @@ if (testing)
 
 endif()
 
-
 #------------------------------------------------------------------------------------
-ExternalProject_Add(
-   OPENUI5
-   URL ${CMAKE_SOURCE_DIR}/net/http/openui5/openui5.tar.gz
-   URL_HASH SHA256=cbe503155fb5fc563c9dce02f4b5bf2163963b3bf118dd20756aa05d0a8693a3
-   CONFIGURE_COMMAND ""
-   BUILD_COMMAND ""
-   INSTALL_COMMAND ""
-   SOURCE_DIR ${CMAKE_BINARY_DIR}/etc/http/openui5dist)
+if(webui)
+  ExternalProject_Add(
+     OPENUI5
+     URL ${CMAKE_SOURCE_DIR}/gui/webdisplay/res/openui5.tar.gz
+     URL_HASH SHA256=a7302c819bbe9c306b9c1c6661d9ea194f01e2fcbb894c32cad60479ed7a3950
+     CONFIGURE_COMMAND ""
+     BUILD_COMMAND ""
+     INSTALL_COMMAND ""
+     SOURCE_DIR ${CMAKE_BINARY_DIR}/ui5/distribution)
+endif()

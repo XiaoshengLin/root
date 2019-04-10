@@ -61,7 +61,9 @@ using TMVA::DNN::EInitialization;
 using TMVA::DNN::EOutputFunction;
 using TMVA::DNN::EOptimizer;
 
+
 namespace TMVA {
+
 
 ////////////////////////////////////////////////////////////////////////////////
 TString fetchValueTmp(const std::map<TString, TString> &keyValueMap, TString key)
@@ -359,6 +361,7 @@ void MethodDL::ProcessOptions()
       }
 
       TString optimizer = fetchValueTmp(block, "Optimizer", TString("ADAM"));
+      settings.optimizerName = optimizer;
       if (optimizer == "SGD") {
          settings.optimizer = DNN::EOptimizer::kSGD;
       } else if (optimizer == "ADAM") {
@@ -373,7 +376,9 @@ void MethodDL::ProcessOptions()
          // Make Adam as default choice if the input string is
          // incorrect.
          settings.optimizer = DNN::EOptimizer::kAdam;
+         settings.optimizerName = "ADAM";
       }
+      
 
       TString strMultithreading = fetchValueTmp(block, "Multithreading", TString("True"));
 
@@ -1174,6 +1179,14 @@ void MethodDL::TrainDeepNet()
       // Add all appropriate layers to deepNet and (if fBuildNet is true) also to fNet
       CreateDeepNet(deepNet, nets);
 
+      // set droput probabilities
+      // use convention to store in the layer 1.- dropout probabilities
+      std::vector<Double_t> dropoutVector(settings.dropoutProbabilities);
+      for (auto & p : dropoutVector) {
+         p = 1.0 - p;
+      }
+      deepNet.SetDropoutProbabilities(dropoutVector);
+
       if (trainingPhase > 1) {
          // copy initial weights from fNet to deepnet
          for (size_t i = 0; i < deepNet.GetDepth(); ++i) {
@@ -1279,8 +1292,9 @@ void MethodDL::TrainDeepNet()
       std::chrono::time_point<std::chrono::system_clock> tstart, tend;
       tstart = std::chrono::system_clock::now();
 
-      Log() << "Training phase " << trainingPhase << " of " << this->GetTrainingSettings().size() << ":    "
-            << "Learning rate = " << settings.learningRate 
+      Log() << "Training phase " << trainingPhase << " of " << this->GetTrainingSettings().size() << ": "
+            << " Optimizer " << settings.optimizerName 
+            << " Learning rate = " << settings.learningRate 
             << " regularization " << (char) settings.regularization 
             << " minimum error = " << minValError
             << Endl;
@@ -1474,7 +1488,10 @@ void MethodDL::Train()
       return;
    } else if (this->GetArchitectureString() == "CPU") {
 #ifdef R__HAS_TMVACPU
-      Log() << kINFO << "Start of deep neural network training on CPU." << Endl << Endl;
+      // note that number of threads used for BLAS might be different
+      // e.g use openblas_set_num_threads(num_threads) for OPENBLAS backend      
+      Log() << kINFO << "Start of deep neural network training on CPU using (for ROOT-IMT) nthreads = "
+            << gConfig().GetNCpu() << Endl << Endl;
       TrainDeepNet<DNN::TCpu<ScalarImpl_t> >(); 
 #else
       Log() << kFATAL << "Multi-core CPU backend not enabled. Please make sure "

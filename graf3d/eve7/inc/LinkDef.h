@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
-// Authors: Matevz Tadel & Alja Mrak-Tadel: 2006 - 2009
+// @(#)root/eve7:$Id$
+// Authors: Matevz Tadel & Alja Mrak-Tadel: 2006 - 2019
 
 /*************************************************************************
- * Copyright (C) 1995-2007, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -10,7 +10,7 @@
  *************************************************************************/
 
 //==============================================================================
-// LinkDef1.h - Core EVE objects and services.
+// LinkDef.h - REve objects and services.
 //==============================================================================
 
 // REveVector
@@ -105,26 +105,18 @@
 #pragma link C++ class ROOT::Experimental::REvePointSelectorConsumer+;
 #pragma link C++ class ROOT::Experimental::REvePointSelector+;
 
-// REveElement
 #pragma link C++ class ROOT::Experimental::REveRenderData+;
+
+// REveElement
 #pragma link C++ class ROOT::Experimental::REveElement+;
-#pragma link C++ class ROOT::Experimental::REveElementObjectPtr+;
-#pragma link C++ class ROOT::Experimental::REveElementList+;
-#pragma link C++ class ROOT::Experimental::REveElementListProjected+;
+#pragma link C++ class ROOT::Experimental::REveAunt+;
+#pragma link C++ class ROOT::Experimental::REveAuntAsList+;
 
-#pragma link C++ class std::list<ROOT::Experimental::REveElement*>;
-#pragma link C++ class std::list<ROOT::Experimental::REveElement*>::iterator;
-#pragma link C++ class std::list<ROOT::Experimental::REveElement*>::const_iterator;
+#pragma link C++ class std::list<ROOT::Experimental::REveElement*>+;
 #pragma link C++ typedef ROOT::Experimental::REveElement::List_t;
-#pragma link C++ typedef ROOT::Experimental::REveElement::List_i;
-#pragma link C++ typedef ROOT::Experimental::REveElement::List_ci;
 
-#pragma link C++ class std::set<ROOT::Experimental::REveElement*>;
-#pragma link C++ class std::set<ROOT::Experimental::REveElement*>::iterator;
-#pragma link C++ class std::set<ROOT::Experimental::REveElement*>::const_iterator;
+#pragma link C++ class std::set<ROOT::Experimental::REveElement*>+;
 #pragma link C++ typedef ROOT::Experimental::REveElement::Set_t;
-#pragma link C++ typedef ROOT::Experimental::REveElement::Set_i;
-#pragma link C++ typedef ROOT::Experimental::REveElement::Set_ci;
 
 // REveCompound
 #pragma link C++ class ROOT::Experimental::REveCompound+;
@@ -142,8 +134,11 @@
 #pragma link C++ class ROOT::Experimental::REveViewerList+;
 
 // Data classes
+#pragma link C++ class ROOT::Experimental::REveViewContext+;
 #pragma link C++ class ROOT::Experimental::REveDataCollection+;
 #pragma link C++ class ROOT::Experimental::REveDataItem+;
+#pragma link C++ class ROOT::Experimental::REveDataProxyBuilderBase+;
+#pragma link C++ class ROOT::Experimental::REveDataSimpleProxyBuilder+;
 #pragma link C++ class ROOT::Experimental::REveDataTable+;
 #pragma link C++ class ROOT::Experimental::REveDataColumn+;
 
@@ -153,10 +148,7 @@
 #pragma link C++ class ROOT::Experimental::REveProjection+;
 #pragma link C++ class ROOT::Experimental::REveProjection::PreScaleEntry_t+;
 #pragma link C++ class std::vector<ROOT::Experimental::REveProjection::PreScaleEntry_t>;
-#pragma link C++ class std::vector<ROOT::Experimental::REveProjection::PreScaleEntry_t>::iterator;
-#pragma link C++ operators std::vector<ROOT::Experimental::REveProjection::PreScaleEntry_t>::iterator;
 #pragma link C++ typedef ROOT::Experimental::REveProjection::vPreScale_t;
-#pragma link C++ typedef ROOT::Experimental::REveProjection::vPreScale_i;
 #pragma link C++ class ROOT::Experimental::REveRhoZProjection+;
 #pragma link C++ class ROOT::Experimental::REveRPhiProjection+;
 #pragma link C++ class ROOT::Experimental::REve3DProjection+;
@@ -207,8 +199,24 @@
 #pragma link C++ class ROOT::Experimental::REveJetCone+;
 #pragma link C++ class ROOT::Experimental::REveJetConeProjected+;
 
+// REveLineSet
+#pragma link C++ class ROOT::Experimental::REveStraightLineSet+;
+#pragma link C++ class ROOT::Experimental::REveStraightLineSetProjected+;
+
+// REveChunkManager
+#pragma link C++ class ROOT::Experimental::REveChunkManager+;
+#pragma link C++ class ROOT::Experimental::REveChunkManager::iterator;
+
 // Geometry viewer
+#pragma link C++ class ROOT::Experimental::REveGeomNodeBase+;
 #pragma link C++ class ROOT::Experimental::REveGeomNode+;
-#pragma link C++ class ROOT::Experimental::REveGeomVisisble+;
+#pragma link C++ class ROOT::Experimental::REveGeomVisible+;
 #pragma link C++ class ROOT::Experimental::REveShapeRenderInfo+;
 #pragma link C++ class ROOT::Experimental::REveGeomDescription+;
+#pragma link C++ class ROOT::Experimental::REveGeomDrawing+;
+#pragma link C++ class ROOT::Experimental::RBrowserRequest+;
+#pragma link C++ class ROOT::Experimental::RBrowserItem+;
+#pragma link C++ class ROOT::Experimental::RBrowserReply+;
+
+// Tables
+#pragma link C++ class ROOT::Experimental::REveTableViewInfo;

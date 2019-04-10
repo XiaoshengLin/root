@@ -623,6 +623,7 @@ void TStreamerInfo::Build()
             fElements->Add(element);
             writecopy->SetBit(TStreamerElement::kWrite);
             writecopy->SetNewType( writecopy->GetType() );
+            writecopy->SetOffset( element->GetOffset() );
             // Put the write element after the read element (that does caching).
             element = writecopy;
          }
@@ -748,6 +749,13 @@ void TStreamerInfo::BuildCheck(TFile *file /* = 0 */)
             return;
          }
       }
+
+      if (0 == strcmp("string",fClass->GetName())) {
+         // We know we do not need any offset check for a string
+         SetBit(kCanDelete);
+         return;
+      }
+
       const TObjArray *array = fClass->GetStreamerInfos();
       TStreamerInfo* info = 0;
 
@@ -2443,8 +2451,7 @@ void TStreamerInfo::BuildOld()
                next(); // move the cursor passed the insert object.
                writecopy->SetBit(TStreamerElement::kWrite);
                writecopy->SetNewType( writecopy->GetType() );
-               writecopy->SetBit(TStreamerElement::kCache);
-               writecopy->SetOffset(infoalloc ? infoalloc->GetOffset(element->GetName()) : 0);
+               writecopy->SetOffset(element->GetOffset());
             }
             element->SetBit(TStreamerElement::kCache);
             element->SetNewType( element->GetType() );

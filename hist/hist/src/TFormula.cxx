@@ -779,6 +779,7 @@ prepareMethod(bool HasParameters, bool HasVariables, const char* FuncName,
 
 static TInterpreter::CallFuncIFacePtr_t::Generic_t
 prepareFuncPtr(TMethodCall *Method) {
+   if (!Method) return nullptr;
    CallFunc_t *callfunc = Method->GetCallFunc();
 
    if (!gCling->CallFunc_IsValid(callfunc)) {
@@ -808,6 +809,7 @@ bool TFormula::PrepareEvalMethod()
       Bool_t hasVariables = (fNdim > 0);
       fMethod = prepareMethod(hasParameters, hasVariables, fClingName,
                               fVectorized).release();
+      if (!fMethod) return false; 
       fFuncPtr = prepareFuncPtr(fMethod);
    }
    return fFuncPtr;
@@ -3157,7 +3159,7 @@ bool TFormula::GenerateGradientPar()
          fGradGenerationInput = std::string("#pragma cling optimize(2)\n") +
             "#pragma clad ON\n" +
             "void " + GradReqFuncName + "() {\n" +
-            "clad::gradient(" + std::string(fClingName) + ");\n }\n" +
+            "clad::gradient(" + std::string(fClingName.Data()) + ");\n }\n" +
             "#pragma clad OFF";
 
          if (!gInterpreter->Declare(fGradGenerationInput.c_str()))

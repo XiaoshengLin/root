@@ -1,8 +1,8 @@
-// @(#)root/eve:$Id$
+// @(#)root/eve7:$Id$
 // Author: Sergey Linev, 13.12.2018
 
 /*************************************************************************
- * Copyright (C) 1995-2018, Rene Brun and Fons Rademakers.               *
+ * Copyright (C) 1995-2019, Rene Brun and Fons Rademakers.               *
  * All rights reserved.                                                  *
  *                                                                       *
  * For the licensing terms see $ROOTSYS/LICENSE.                         *
@@ -38,7 +38,9 @@ protected:
 
    void WebWindowCallback(unsigned connid, const std::string &arg);
 
-   std::vector<int> GetStackFromJson(const std::string &json);
+   std::vector<int> GetStackFromJson(const std::string &json, bool node_ids = false);
+
+   void SendGeometry(unsigned connid);
 
 public:
 

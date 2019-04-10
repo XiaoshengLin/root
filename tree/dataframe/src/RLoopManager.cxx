@@ -8,6 +8,7 @@
 #include "ROOT/TTreeProcessorMT.hxx"
 #include "RtypesCore.h" // Long64_t
 #include "TBranchElement.h"
+#include "TBranchObject.h"
 #include "TEntryList.h"
 #include "TError.h"
 #include "TInterpreter.h"
@@ -36,13 +37,13 @@ bool ContainsLeaf(const std::set<TLeaf *> &leaves, TLeaf *leaf)
 ///////////////////////////////////////////////////////////////////////////////
 /// This overload does not perform any check on the duplicates.
 /// It is used for TBranch objects.
-void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, std::string &branchName,
-                std::string &friendName)
+void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, const std::string &branchName,
+                const std::string &friendName)
 {
 
    if (!friendName.empty()) {
       // In case of a friend tree, users might prepend its name/alias to the branch names
-      auto friendBName = friendName + "." + branchName;
+      const auto friendBName = friendName + "." + branchName;
       if (bNamesReg.insert(friendBName).second)
          bNames.push_back(friendBName);
    }
@@ -53,8 +54,8 @@ void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, std::st
 
 ///////////////////////////////////////////////////////////////////////////////
 /// This overloads makes sure that the TLeaf has not been already inserted.
-void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, std::string &branchName,
-                std::string &friendName, std::set<TLeaf *> &foundLeaves, TLeaf *leaf, bool allowDuplicates)
+void UpdateList(std::set<std::string> &bNamesReg, ColumnNames_t &bNames, const std::string &branchName,
+                const std::string &friendName, std::set<TLeaf *> &foundLeaves, TLeaf *leaf, bool allowDuplicates)
 {
    const bool canAdd = allowDuplicates ? true : !ContainsLeaf(foundLeaves, leaf);
    if (!canAdd) {
@@ -99,16 +100,15 @@ void GetBranchNamesImpl(TTree &t, std::set<std::string> &bNamesReg, ColumnNames_
 
    const auto branches = t.GetListOfBranches();
    if (branches) {
-      std::string prefix = "";
       for (auto b : *branches) {
          TBranch *branch = static_cast<TBranch *>(b);
-         auto branchName = std::string(branch->GetName());
+         const auto branchName = std::string(branch->GetName());
          if (branch->IsA() == TBranch::Class()) {
             // Leaf list
             auto listOfLeaves = branch->GetListOfLeaves();
             if (listOfLeaves->GetEntries() == 1) {
                auto leaf = static_cast<TLeaf *>(listOfLeaves->At(0));
-               auto leafName = std::string(leaf->GetName());
+               const auto leafName = std::string(leaf->GetName());
                if (leafName == branchName) {
                   UpdateList(bNamesReg, bNames, branchName, friendName, foundLeaves, leaf, allowDuplicates);
                }
@@ -116,10 +116,14 @@ void GetBranchNamesImpl(TTree &t, std::set<std::string> &bNamesReg, ColumnNames_
 
             for (auto leaf : *listOfLeaves) {
                auto castLeaf = static_cast<TLeaf *>(leaf);
-               auto leafName = std::string(leaf->GetName());
-               auto fullName = branchName + "." + leafName;
+               const auto leafName = std::string(leaf->GetName());
+               const auto fullName = branchName + "." + leafName;
                UpdateList(bNamesReg, bNames, fullName, friendName, foundLeaves, castLeaf, allowDuplicates);
             }
+         } else if (branch->IsA() == TBranchObject::Class()) {
+            // TBranchObject
+            ExploreBranch(t, bNamesReg, bNames, branch, branchName + ".", friendName);
+            UpdateList(bNamesReg, bNames, branchName, friendName);
          } else {
             // TBranchElement
             // Check if there is explicit or implicit dot in the name
@@ -240,6 +244,7 @@ void RLoopManager::RunEmptySource()
    for (ULong64_t currEntry = 0; currEntry < fNEmptyEntries && fNStopsReceived < fNChildren; ++currEntry) {
       RunAndCheckFilters(0, currEntry);
    }
+   CleanUpTask(0u);
 }
 
 /// Run event loop over one or multiple ROOT files, in parallel.
@@ -281,6 +286,7 @@ void RLoopManager::RunTreeReader()
    while (r.Next() && fNStopsReceived < fNChildren) {
       RunAndCheckFilters(0, r.GetCurrentEntry());
    }
+   CleanUpTask(0u);
 }
 
 /// Run event loop over data accessed through a DataSource, in sequence.
@@ -300,6 +306,7 @@ void RLoopManager::RunDataSource()
             }
          }
       }
+      CleanUpTask(0u);
       fDataSource->FinaliseSlot(0u);
       ranges = fDataSource->GetEntryRanges();
    }
@@ -417,17 +424,27 @@ void RLoopManager::CleanUpTask(unsigned int slot)
       ptr->ClearTask(slot);
 }
 
-/// Jit all actions that required runtime column type inference, and clean the `fToJit` member variable.
-void RLoopManager::BuildJittedNodes()
+/// Declare to the interpreter type aliases and other entities required by RDF jitted nodes.
+/// This method clears the `fToJitDeclare` member variable.
+void RLoopManager::JitDeclarations()
 {
-   auto error = TInterpreter::EErrorCode::kNoError;
-   gInterpreter->Calc(fToJit.c_str(), &error);
-   if (TInterpreter::EErrorCode::kNoError != error) {
-      std::string exceptionText =
-         "An error occurred while jitting. The lines above might indicate the cause of the crash\n";
-      throw std::runtime_error(exceptionText.c_str());
-   }
-   fToJit.clear();
+   if (fToJitDeclare.empty())
+      return;
+
+   RDFInternal::InterpreterDeclare(fToJitDeclare);
+   fToJitDeclare.clear();
+}
+
+/// Add RDF nodes that require just-in-time compilation to the computation graph.
+/// This method also invokes JitDeclarations() if needed, and clears the `fToJitExec` member variable.
+void RLoopManager::Jit()
+{
+   if (fToJitExec.empty())
+      return;
+
+   JitDeclarations();
+   RDFInternal::InterpreterCalc(fToJitExec, "RLoopManager::Run");
+   fToJitExec.clear();
 }
 
 /// Trigger counting of number of children nodes for each node of the functional graph.
@@ -455,8 +472,7 @@ unsigned int RLoopManager::GetNextID()
 /// Also perform a few setup and clean-up operations (jit actions if necessary, clear booked actions after the loop...).
 void RLoopManager::Run()
 {
-   if (!fToJit.empty())
-      BuildJittedNodes();
+   Jit();
 
    InitNodes();
 

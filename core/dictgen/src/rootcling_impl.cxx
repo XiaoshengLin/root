@@ -87,6 +87,8 @@ const char *shortHelp =
 
 #include "llvm/Bitcode/BitstreamWriter.h"
 #include "llvm/Support/Path.h"
+#include "llvm/Support/PrettyStackTrace.h"
+#include "llvm/Support/Signals.h"
 
 #include "RtypesCore.h"
 #include "TModuleGenerator.h"
@@ -2302,65 +2304,6 @@ bool HasPath(const std::string &name)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-/// A set of rules are applied in order to transform the name for the rootmap
-/// file
-/// * "::" becomes "@@"
-/// * "{const,unsigned,signed} " become "{const,unsigned,signed}-"
-/// * "*const" becomes "*-const"
-/// * "short int" becomes "short"
-/// * "long int" becomes "long"
-/// * "long long" becomes "long-long"
-/// * "long double" becomes "long-double"
-/// * " " becomes ""
-/// * ">>" becomes ">->" except for "operator>>"
-
-void ManipForRootmap(std::string &name)
-{
-   using namespace ROOT::TMetaUtils;
-
-   // * "::" becomes "@@"
-   ReplaceAll(name, "::", "@@");
-
-
-   // * "{const,unsigned,signed} " become "{const,unsigned,signed}-"
-   // We do it in 2 steps: trim the spaces and replace
-   // 1
-   name.erase(name.find_last_not_of(" \n\r\t") + 1);
-   // 2
-   ReplaceAll(name, "const ", "const-");
-   ReplaceAll(name, "signed ", "signed-");
-
-   // * "*const" becomes "*-const"
-   ReplaceAll(name, "*const", "*-const");
-
-   // * "short int" becomes "short"
-   ReplaceAll(name, "short int", "short");
-
-   // * "long int" becomes "long"
-   ReplaceAll(name, "long int", "long");
-
-   // * "long long" becomes "long-long"
-   ReplaceAll(name, "long long", "long-long");
-
-   // * "long double" becomes "long-double"
-   ReplaceAll(name, "long double", "long-double");
-
-   // * " " becomes ""
-   ReplaceAll(name, " ", "");
-   // But this is could be more efficient
-   //name.erase(std::remove_if(name.begin(), name.end(), isspace), name.end());
-
-   // * ">>" becomes ">->" except for "operator>>"
-   // We replace blindly and recursively and then roll back for operator>->
-   // in other words "Better to Say Sorry than to Ask Permission"
-   while (name.find(">>") != std::string::npos) {
-      ReplaceAll(name, ">>", ">->");
-   }
-   ReplaceAll(name, "operator>->", "operator>>");
-
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 void AdjustRootMapNames(std::string &rootmapFileName,
                         std::string &rootmapLibName)
@@ -2847,24 +2790,26 @@ int FinalizeStreamerInfoWriting(cling::Interpreter &interp, bool writeEmptyRootP
    if (!gDriverConfig->fCloseStreamerInfoROOTFile)
       return 0;
 
-   interp.parseForModule("#include \"TStreamerInfo.h\"\n"
-                           "#include \"TFile.h\"\n"
-                           "#include \"TObjArray.h\"\n"
-                           "#include \"TVirtualArray.h\"\n"
-                           "#include \"TStreamerElement.h\"\n"
-                           "#include \"TProtoClass.h\"\n"
-                           "#include \"TBaseClass.h\"\n"
-                           "#include \"TListOfDataMembers.h\"\n"
-                           "#include \"TListOfEnums.h\"\n"
-                           "#include \"TListOfEnumsWithLock.h\"\n"
-                           "#include \"TDataMember.h\"\n"
-                           "#include \"TEnum.h\"\n"
-                           "#include \"TEnumConstant.h\"\n"
-                           "#include \"TDictAttributeMap.h\"\n"
-                           "#include \"TMessageHandler.h\"\n"
-                           "#include \"TArray.h\"\n"
-                           "#include \"TRefArray.h\"\n"
-                           "#include \"root_std_complex.h\"\n");
+   if (interp.parseForModule("#include \"TStreamerInfo.h\"\n"
+                             "#include \"TFile.h\"\n"
+                             "#include \"TObjArray.h\"\n"
+                             "#include \"TVirtualArray.h\"\n"
+                             "#include \"TStreamerElement.h\"\n"
+                             "#include \"TProtoClass.h\"\n"
+                             "#include \"TBaseClass.h\"\n"
+                             "#include \"TListOfDataMembers.h\"\n"
+                             "#include \"TListOfEnums.h\"\n"
+                             "#include \"TListOfEnumsWithLock.h\"\n"
+                             "#include \"TDataMember.h\"\n"
+                             "#include \"TEnum.h\"\n"
+                             "#include \"TEnumConstant.h\"\n"
+                             "#include \"TDictAttributeMap.h\"\n"
+                             "#include \"TMessageHandler.h\"\n"
+                             "#include \"TArray.h\"\n"
+                             "#include \"TRefArray.h\"\n"
+                             "#include \"root_std_complex.h\"\n")
+       != cling::Interpreter::kSuccess)
+       return 1;
    if (!gDriverConfig->fCloseStreamerInfoROOTFile(writeEmptyRootPCM)) {
       return 1;
    }
@@ -3826,6 +3771,29 @@ int RootClingMain(int argc,
               bool isDeep = false,
               bool isGenreflex = false)
 {
+   // Copied from cling driver.
+   // FIXME: Uncomment once we fix ROOT's teardown order.
+   //llvm::llvm_shutdown_obj shutdownTrigger;
+
+   llvm::sys::PrintStackTraceOnErrorSignal(argv[0]);
+   llvm::PrettyStackTraceProgram X(argc, argv);
+
+#if defined(_WIN32) && defined(_MSC_VER)
+   // Suppress error dialogs to avoid hangs on build nodes.
+   // One can use an environment variable (Cling_GuiOnAssert) to enable
+   // the error dialogs.
+   const char *EnablePopups = getenv("Cling_GuiOnAssert");
+   if (EnablePopups == nullptr || EnablePopups[0] == '0') {
+      ::_set_error_mode(_OUT_TO_STDERR);
+      _CrtSetReportMode(_CRT_WARN, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+      _CrtSetReportFile(_CRT_WARN, _CRTDBG_FILE_STDERR);
+      _CrtSetReportMode(_CRT_ERROR, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+      _CrtSetReportFile(_CRT_ERROR, _CRTDBG_FILE_STDERR);
+      _CrtSetReportMode(_CRT_ASSERT, _CRTDBG_MODE_FILE | _CRTDBG_MODE_DEBUG);
+      _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
+   }
+#endif
+
    if (argc < 2) {
       fprintf(stderr,
               shortHelp,
@@ -4238,8 +4206,14 @@ int RootClingMain(int argc,
    }
 
    if (!isPCH && cxxmodule) {
+#ifndef R__MACOSX
+      // Add the overlay file. Note that we cannot factor it out for both root
+      // and rootcling because rootcling activates modules only if -cxxmodule
+      // flag is passed.
+
       // includeDir is where modulemaps exist.
       clingArgsInterpreter.push_back("-modulemap_overlay=" + includeDir);
+#endif //R__MACOSX
 
       // We just pass -fmodules, the CIFactory will do the rest and configure
       // clang correctly once it sees this flag.
@@ -5045,8 +5019,16 @@ int RootClingMain(int argc,
       CI->clearOutputFiles(CI->getDiagnostics().hasErrorOccurred());
    }
 
-   // Before returning, rename the files
-   rootclingRetCode += tmpCatalog.commit();
+   // Add the warnings
+   rootclingRetCode += ROOT::TMetaUtils::GetNumberOfErrors();
+
+   // Before returning, rename the files if no errors occurred
+   // otherwise clean them to avoid remnants (see ROOT-10015)
+   if(rootclingRetCode == 0) {
+      rootclingRetCode += tmpCatalog.commit();
+   } else {
+      tmpCatalog.clean();
+   }
 
    return rootclingRetCode;
 

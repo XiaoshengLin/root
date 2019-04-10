@@ -20,7 +20,7 @@ endfunction()
 function(ROOT_APPLY_OPTIONS)
   foreach(opt ${root_build_options})
      option(${opt} "${${opt}_description}" ${${opt}_defvalue})
-  endforeach()  
+  endforeach()
 endfunction()
 
 #---------------------------------------------------------------------------------------------------
@@ -143,6 +143,7 @@ ROOT_BUILD_OPTION(python ON "Enable support for automatic Python bindings (PyROO
 ROOT_BUILD_OPTION(qt5web OFF "Enable support for Qt5 web-based display (requires Qt5WebEngine)")
 ROOT_BUILD_OPTION(r OFF "Enable support for R bindings (requires R, Rcpp, and RInside)")
 ROOT_BUILD_OPTION(roofit ON "Build RooFit advanced fitting package")
+ROOT_BUILD_OPTION(webui ON "Build Web-based UI components of ROOT (requires C++14 standard or higher)")
 ROOT_BUILD_OPTION(root7 ON "Build ROOT 7 components of ROOT (requires C++14 standard or higher)")
 ROOT_BUILD_OPTION(rpath OFF "Link libraries with built-in RPATH (run-time search path)")
 ROOT_BUILD_OPTION(runtime_cxxmodules OFF "Enable runtime support for C++ modules")
@@ -155,7 +156,7 @@ ROOT_BUILD_OPTION(tcmalloc OFF "Use tcmalloc memory allocator")
 ROOT_BUILD_OPTION(thread ON "Enable support for multi-threading (cannot be disabled)")
 ROOT_BUILD_OPTION(tmva ON "Build TMVA multi variate analysis library")
 ROOT_BUILD_OPTION(tmva-cpu ON "Build TMVA with CPU support for deep learning (requires BLAS)")
-ROOT_BUILD_OPTION(tmva-gpu ON "Build TMVA with GPU support for deep learning (requries CUDA)")
+ROOT_BUILD_OPTION(tmva-gpu OFF "Build TMVA with GPU support for deep learning (requries CUDA)")
 ROOT_BUILD_OPTION(tmva-pymva ON "Enable support for Python in TMVA (requires numpy)")
 ROOT_BUILD_OPTION(tmva-rmva OFF "Enable support for R in TMVA")
 ROOT_BUILD_OPTION(unuran OFF "Enable support for UNURAN (package for generating non-uniform random numbers)")
@@ -263,6 +264,9 @@ if(builtin_all)
   set(builtin_zlib_defvalue ON)
 endif()
 
+#---webui always build together with root7----------------------------------------------------
+set(webui_defvalue ${root7})
+
 #---Vc supports only x86_64 architecture-------------------------------------------------------
 if (NOT CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
   message(STATUS "Vc does not support ${CMAKE_SYSTEM_PROCESSOR}. Support for Vc disabled.")
@@ -271,7 +275,7 @@ endif()
 
 #---Options depending of CMake Generator-------------------------------------------------------
 if( CMAKE_GENERATOR STREQUAL Ninja)
-   set(fortran_defvalue OFF) 
+   set(fortran_defvalue OFF)
 endif()
 
 #---Apply minimal or gminimal------------------------------------------------------------------
@@ -297,6 +301,25 @@ endif()
 
 #---Define at moment the options with the selected default values-----------------------------
 ROOT_APPLY_OPTIONS()
+
+if(root7)
+  if(NOT CMAKE_CXX_STANDARD)
+      set(CMAKE_CXX_STANDARD 14 CACHE STRING "C++14 standard used with root7")
+      message(STATUS "Enabling C++14 for compilation of root7 components")
+  elseif(NOT CMAKE_CXX_STANDARD GREATER 11)
+      message(FATAL_ERROR ">>> At least C++14 standard required with root7")
+   endif()
+endif()
+
+#---check if webui can be build-------------------------------
+if(webui)
+  if(NOT CMAKE_CXX_STANDARD GREATER 11)
+    set(webui OFF CACHE BOOL "(WebUI requires at least C++14)" FORCE)
+  elseif(NOT http)
+    set(http ON CACHE BOOL "(Enabled since it's needed by webui)" FORCE)
+  endif()
+endif()
+
 
 #---Removed options------------------------------------------------------------
 foreach(opt afdsmgrd afs bonjour castor chirp geocad glite globus gviz hdfs ios qt qtgsi rfio ruby sapdb srp table)
